@@ -1,0 +1,101 @@
+---
+title: "Prediction of Manner of Exercise"
+author: "Yazid Imran"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+The data set used in this assignment is the "Weight Lifting Exercises Dataset" from the Human Activity Recognition project by Groupware\@LES. This data set is used to predict how well an activity -- here it is the unilateral dumbbell biceps curl -- is performed through information provided by sensors placed on the subject's arm, forearm, belt and dumbbell. Six young male participants were asked to perform 10 repetitions of the activity in five different fashions, the "right" method (class A), throwing elbows to the front (class B), lifting the dumbbell only halfway (class C), lowering the dumbbell only halfway (class D), and throwing hips to the front (class E).
+
+## Training Data
+
+The data set has been pre-divided into training data and testing data. The training data contains 19622 observations of 160 variables. Of all the variables, many cannot be used for building our prediction model as it contains missing values. For this assignment, we only use the variables related to the belt sensors (i.e. variables containing `belt`) to avoid slow computation time if we use too many variables to build our model. Assuming the files are in the working directory, the code to read the data and subset the variables is described below:
+
+```{r read, cache=TRUE, results='hide'}
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+traind <- training[, c(8:11, 37:45, 160)]     # Column 160 is the classe variable
+```
+
+Looking at the matrix of correlations of all the belt-related predictors, the pair with the highest correlation is the `roll_belt` and the `total_accel_belt`, with a correlation of 0.9809. However, looking at the plot between the two predictors, there is no indication that the two predictors are similar, considering that `roll_belt` has negative values while `total_accel_belt` are all positive values.
+
+```{r corp, echo=FALSE, fig.width=9, fig.height=4.5}
+par(mar=c(4,4,1,2))
+plot(traind$roll_belt, traind$total_accel_belt, xlab="roll_belt", ylab="total_accel_belt")
+```
+
+## Building the Model
+
+The next step is to build our training model. We use the `caret` package to do this. First, we set the seed, and then use the `createDataPartition` function to further partition the "training" set `traind` into a sub-training set and a test set. This is done as we need a set to test the model with first and look at its performance.
+
+```{r slice, cache=TRUE, message=FALSE}
+library(caret)
+set.seed(1324)
+intrain <- createDataPartition(y = traind$classe, p = 0.75, list = FALSE)
+traine <- traind[intrain, ]
+teste <- traind[-intrain, ]
+```
+
+We will use the random forest method to build our model. Using the `train` function, the method `rf` is selected. For cross-validation, the 10-fold method is used, this is set through the `trainControl` function, selecting `method` as `cv` and `number` as 10. This is then passed to the `train` function under `trControl`. The exact code is described below:
+
+```{r trn, cache=TRUE, message=FALSE}
+fcontrol <- trainControl(method = "cv", number = 10)
+fit <- train(classe ~ ., data = traine, method = "rf", trControl=fcontrol)
+```
+
+Note that the data used is `traine`, which is our training set containing only the belt-related variables.
+
+Regarding the cross-validation, by looking at the [documentation](https://www.rdocumentation.org/packages/caret/versions/6.0-84/topics/train) of the `train` function, the optimal model is selected by looking at its "Accuracy" value, though if desired this can be changed to the "Kappa" value instead by adding `metric = "Kappa"` in the `train` function argument.
+
+## Model Testing
+
+To test the accuracy of our prediction model, the `predict` function is used. The model is used on the `teste` set, and the results are compared to the actual `classe` of the observations in the set using a confusion matrix:
+
+```{r crt, message=FALSE, echo=FALSE}
+library(caret)
+```
+
+
+```{r evalu}
+pred <- predict(fit, teste)
+confusionMatrix(pred, teste$classe)
+```
+
+As we can see from the summary of the confusion matrix, the model we built is 92.39% accurate when tested on the `teste` set. This means this model has an expected error rate of 7.61%.
+
+## A Different Model
+
+Other methods can be used to build our training model, let's use the `gbm` method to build another model using the same data:
+
+```{r trn2, cache=TRUE, message=FALSE}
+fit2 <- train(classe ~ ., data = traine, method = "gbm", trControl=fcontrol, verbose=FALSE)
+```
+
+Looking at the confusion matrix for the predictions of the `gbm` model, it's accuracy is lower (81.16%) compared to the previous random forest model, which also means a higher error rate (18.84%):
+
+```{r evalu2}
+pred2 <- predict(fit2, teste)
+confusionMatrix(pred2, teste$classe)
+```
+
+Hence, for the prediction of the actual testing set, the random forest model was chosen because of its higher accuracy when used on the `teste` set.
+
+## Prediction on Testing Data
+
+The random forest model `fit` is used to predict the class of the 20 observations in the `testing` set by using the `predict` function. The predictions is as follows:
+
+```{r evalu3, echo=FALSE}
+pred3 <- predict(fit, testing)
+pred3
+```
+
+The predictions above were submitted to the prediction quiz, and receives a 95% grade (19 out of 20) with the only wrong prediction being the final case. The 5% error rate is consistent with the 7.61% error rate that is given by the summary of the random forest model previously.
+
+## Conclusion
+
+Using the random forest method, we manage to predict the manner of exercise with an error rate of around 7%. The accuracy may be improved by using other more suitable predictors or using other training methods, however care must be taken to avoid issues such as overfitting.
